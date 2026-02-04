@@ -133,6 +133,7 @@ fun CameraScreen(
                                 
                                 (context as? Activity)?.runOnUiThread { 
                                     extractionResult = result
+                                    viewModel.onGestureDetected(result.gesture)
                                     
                                     // Log extraction result details
                                     val handCount = result.handResult?.landmarks()?.size ?: 0
@@ -182,6 +183,22 @@ fun CameraScreen(
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f))))
                     .padding(24.dp)
             ) {
+                // Speech Input HUD
+                val spokenText by viewModel.spokenText.collectAsState()
+                if (spokenText.isNotEmpty()) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color.Blue.copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).border(1.dp, Color.Blue.copy(alpha = 0.6f), RoundedCornerShape(12.dp)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.size(8.dp).clip(RoundedCornerShape(4.dp)).background(Color.Red))
+                            Spacer(Modifier.width(8.dp))
+                            Text("VOICE_INPUT: \"$spokenText\"", color = Color.White, style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
+
                 // Warning if tasks are missing
                 if (extractionResult?.gesture?.contains("Error") == true) {
                     Card(
@@ -192,6 +209,7 @@ fun CameraScreen(
                     }
                 }
 
+                val smoothedGesture by viewModel.smoothedGesture.collectAsState()
                 Row(
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha = 0.6f)).border(1.dp, Color.Cyan.copy(alpha = 0.3f), RoundedCornerShape(12.dp)).padding(16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -200,8 +218,8 @@ fun CameraScreen(
                     Column {
                         Text("GESTURE ENGINE", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
                         Text(
-                            text = extractionResult?.gesture ?: "SEARCHING...",
-                            color = if (extractionResult?.gesture?.contains("Buffering") == true) Color.Yellow else Color.Cyan,
+                            text = smoothedGesture,
+                            color = if (smoothedGesture.contains("Buffering")) Color.Yellow else Color.Cyan,
                             style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.ExtraBold)
                         )
                     }

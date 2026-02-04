@@ -28,6 +28,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Tracking for camera rotation used by overlay
     var lastRotation: Int = 0
 
+    // Smoothed Gesture State
+    private val _smoothedGesture = MutableStateFlow("SEARCHING...")
+    val smoothedGesture: StateFlow<String> = _smoothedGesture
+
+    companion object {
+        private const val HISTORY_SIZE = 5
+    }
+
+    private val gestureHistory = mutableListOf<String>()
+
     // Speech UI State
     private val _isListening = MutableStateFlow(false)
     val isListening: StateFlow<Boolean> = _isListening
@@ -42,6 +52,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val speechIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
         putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
         putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+    }
+
+    fun onGestureDetected(gesture: String) {
+        if (gesture.isEmpty() || gesture == "WAITING..." || gesture.contains("Buffering")) {
+            return
+        }
+        
+        synchronized(gestureHistory) {
+            gestureHistory.add(gesture)
+            if (gestureHistory.size > HISTORY_SIZE) {
+                gestureHistory.removeAt(0)
+            }
+            
+            // Majority voting
+            val counts = gestureHistory.groupingBy { it }.eachCount()
+            val best = counts.maxByOrNull { it.value }
+            
+            if (best != null && best.value >= 3) { // Require at least 3 out of 5 frames
+                _smoothedGesture.value = best.key
+            }
+        }
     }
 
     init {

@@ -94,13 +94,15 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     // LiteRT (Next-generation TensorFlow Lite)
-    val litertVersion = "2.1.1"
+    val litertVersion = "1.4.1"
     implementation("com.google.ai.edge.litert:litert:$litertVersion")
-    // Support for Flex Ops (Required for your model)
-    implementation("org.tensorflow:tensorflow-lite-select-tf-ops:2.16.1")
-    implementation("com.google.ai.edge.litert:litert-support:1.4.1") {
+    implementation("com.google.ai.edge.litert:litert-gpu:$litertVersion")
+    implementation("com.google.ai.edge.litert:litert-support:$litertVersion") {
         exclude(group = "com.google.ai.edge.litert", module = "litert-api")
     }
+    
+    // Select TensorFlow Ops (Required for Flex Ops in your model)
+    implementation("org.tensorflow:tensorflow-lite-select-tf-ops:2.16.1")
     
     // MediaPipe
     implementation("com.google.mediapipe:tasks-vision:0.10.14")
