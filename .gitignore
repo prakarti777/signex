@@ -1,0 +1,43 @@
+# Android
+build/
+.gradle/
+local.properties
+*.iml
+.idea/
+.DS_Store
+*.ap_
+*.apk
+*.dex
+crashlytics-build.properties
+
+# Build-time artifacts
+app/build/
+app/.cxx/
+app/release/
+
+# TFLite/Keras temp files
+app/src/main/assets/temp_model/
+app/src/main/assets/mymodel.keras.zip
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.cache
+nosetests.xml
+coverage.xml
+*,cover
+.hypothesis/
+
+# Logs
+*.log
+app/src/main/assets/logs/

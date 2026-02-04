@@ -1,0 +1,20 @@
+Hello
+Thank You
+Yes
+No
+Please
+Help
+I Love You
+Eat
+Drink
+Sleep
+Me
+You
+Friend
+Family
+Search
+Wait
+Uncertain
+Searching...
+Gathering frames...
+Detecting...
