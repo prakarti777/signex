@@ -43,7 +43,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun AppNavigation(viewModel: MainViewModel) {
-    var currentScreen by remember { mutableStateOf("camera") } // Start directly on camera
+    var currentScreen by remember { mutableStateOf("main") } // Start on main dashboard for instant response
     var showCameraDialog by remember { mutableStateOf(false) }
     var selectedLensFacing by remember { mutableStateOf(CameraSelector.LENS_FACING_FRONT) }
     val context = LocalContext.current

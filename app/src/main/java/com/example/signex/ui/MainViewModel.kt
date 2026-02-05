@@ -13,6 +13,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.signex.data.AppDatabase
 import com.example.signex.data.AppRepository
 import com.example.signex.data.AudioText
+import com.example.signex.ml.SignLanguageClassifier
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -54,6 +55,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
     }
 
+    // ML Classifier (Moved here to prevent lag when opening CameraScreen)
+    val classifier: SignLanguageClassifier by lazy { SignLanguageClassifier(application) }
+
     fun onGestureDetected(gesture: String) {
         if (gesture.isEmpty() || gesture == "WAITING..." || gesture.contains("Buffering")) {
             return
@@ -84,6 +88,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 savedTexts.value = it
             }
         }
+
+        // Proactively warm up the ML engine in the background 
+        // while the user is looking at the home screen.
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                Log.i("MainViewModel", "Pre-loading SignLanguageClassifier...")
+                val warmUp = classifier 
+                Log.i("MainViewModel", "SignLanguageClassifier ready.")
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Error pre-loading classifier", e)
+            }
+        }
     }
 
     fun startListening(context: Context) {
@@ -112,9 +128,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                          override fun onResults(results: Bundle?) {
                              val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                              if (!matches.isNullOrEmpty()) {
-                                 val text = matches[0]
-                                 _spokenText.value = text
-                                 saveText(text)
+                                  val text = matches[0]
+                                  _spokenText.value = text
+                                  saveText(text)
                              }
                          }
                          override fun onPartialResults(partialResults: Bundle?) {
@@ -157,5 +173,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         speechRecognizer?.destroy()
+        classifier.close()
     }
 }

@@ -96,18 +96,18 @@ class LandmarkOverlay {
         val offsetY = (postScaleHeight - viewHeight) / 2f
 
         /**
-         * Apply 90-degree LEFT rotation:
-         * rx = y
-         * ry = 1 - x
+         * Apply 90-degree LEFT rotation for Front Camera.
+         * For Back Camera, we rotate an additional 180 degrees (mirror both axes) 
+         * because the sensor data is typically inverted compared to the front-facing mirror logic.
          */
         fun transformX(x: Float, y: Float): Float {
-            val rx = y
+            val rx = if (isFrontCamera) y else 1.0f - y
             val mirroredX = if (isFrontCamera) 1.0f - rx else rx
             return (mirroredX * postScaleWidth) - offsetX
         }
 
         fun transformY(x: Float, y: Float): Float {
-            val ry = 1.0f - x
+            val ry = if (isFrontCamera) 1.0f - x else x
             return (ry * postScaleHeight) - offsetY
         }
 
@@ -166,7 +166,7 @@ class LandmarkOverlay {
                     val flm = faceResult.faceLandmarks()[0]
                     for (i in flm.indices step 8) { 
                         val x = transformX(flm[i].x(), flm[i].y())
-                        val y = transformY(flm[i].y(), flm[i].y())
+                        val y = transformY(flm[i].x(), flm[i].y())
                         if (x.isFinite()) {
                             canvas.drawCircle(x, y, 4f, faceDotPaint)
                             drawCount++
@@ -174,6 +174,7 @@ class LandmarkOverlay {
                     }
                 }
             }
+
             
             canvas.drawText("Landmarks: $drawCount | Frame: ${imageWidth}x${imageHeight}", 40f, 100f, debugPaint)
             

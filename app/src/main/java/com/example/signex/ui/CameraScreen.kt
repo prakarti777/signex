@@ -46,11 +46,11 @@ fun CameraScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     
-    var currentLensFacing by remember { mutableStateOf(initialLensFacing) }
+    var currentLensFacing by remember(initialLensFacing) { mutableStateOf(initialLensFacing) }
     var extractionResult by remember { mutableStateOf<ExtractionResult?>(null) }
     
     val executor = remember { Executors.newSingleThreadExecutor() }
-    val classifier = remember { SignLanguageClassifier(context) }
+    val classifier = viewModel.classifier // Use shared classifier from ViewModel
     val overlayDrawer = remember { LandmarkOverlay() }
     val fileLogger = remember { FileLogger.getInstance(context) }
 
@@ -62,19 +62,53 @@ fun CameraScreen(
     DisposableEffect(Unit) {
         onDispose {
             executor.shutdown()
-            classifier.close()
+            // Classifier close is now handled by ViewModel.onCleared
         }
     }
 
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
 
+    val isListening by viewModel.isListening.collectAsState()
+    val currentSpeechText by viewModel.spokenText.collectAsState()
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { 
-                    Column {
-                        Text("ANTIGRAVITY", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 2.sp))
-                        Text("Vision Perception System", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                    Surface(
+                        onClick = {
+                            if (isListening) viewModel.stopListening()
+                            else viewModel.startListening(context)
+                        },
+                        color = Color.Transparent,
+                        contentColor = Color.White
+                    ) {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    if (isListening) "LISTENING..." else "SIGNEX", 
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold, 
+                                        letterSpacing = 2.sp,
+                                        color = if (isListening) Color.Red else Color.White
+                                    )
+                                )
+                                if (isListening) {
+                                    Spacer(Modifier.width(8.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(Color.Red)
+                                    )
+                                }
+                            }
+                            Text(
+                                if (isListening) "Tap to stop" else "Tap to start voice-to-text", 
+                                style = MaterialTheme.typography.labelSmall, 
+                                color = Color.Gray
+                            )
+                        }
                     }
                 },
                 navigationIcon = {
@@ -84,11 +118,13 @@ fun CameraScreen(
                 },
                 actions = {
                     IconButton(onClick = {
-                        currentLensFacing = if (currentLensFacing == CameraSelector.LENS_FACING_FRONT) {
+                        val newFacing = if (currentLensFacing == CameraSelector.LENS_FACING_FRONT) {
                             CameraSelector.LENS_FACING_BACK
                         } else {
                             CameraSelector.LENS_FACING_FRONT
                         }
+                        Log.d("CameraScreen", "Flipping camera to: $newFacing")
+                        currentLensFacing = newFacing
                     }) {
                         Icon(
                             imageVector = Icons.Default.FlipCameraAndroid,
@@ -112,56 +148,77 @@ fun CameraScreen(
                     }
                 },
                 update = { previewView ->
+                    // CRITICAL: Read the state here so Compose knows the update block depends on it
+                    val lensFacing = currentLensFacing
+                    
                     cameraProviderFuture.addListener({
-                        val cameraProvider = cameraProviderFuture.get()
-                        val preview = androidx.camera.core.Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
-                        val imageAnalysis = ImageAnalysis.Builder()
-                            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                            .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
-                            .build()
-
-                        imageAnalysis.setAnalyzer(executor) { imageProxy ->
-                            try {
-                                val bitmap = imageProxy.toBitmap()
-                                // Use monotonically increasing timestamp from imageProxy
-                                // Convert nanoseconds to milliseconds
-                                val timestampMs = imageProxy.imageInfo.timestamp / 1_000_000
-                                // Pass rotation for correct detection orientation
-                                val rotationDegrees = imageProxy.imageInfo.rotationDegrees
-                                viewModel.lastRotation = rotationDegrees
-                                val result = classifier.processFrame(bitmap, timestampMs, rotationDegrees)
-                                
-                                (context as? Activity)?.runOnUiThread { 
-                                    extractionResult = result
-                                    viewModel.onGestureDetected(result.gesture)
-                                    
-                                    // Log extraction result details
-                                    val handCount = result.handResult?.landmarks()?.size ?: 0
-                                    val poseCount = result.poseResult?.landmarks()?.size ?: 0
-                                    if (handCount > 0 || poseCount > 0) {
-                                        fileLogger.d("CameraScreen", "ExtractionResult updated: Hands=$handCount, Pose=$poseCount, Gesture=${result.gesture}, TS=$timestampMs, Rot=$rotationDegrees")
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                Log.e("CameraScreen", "Analysis error", e)
-                                fileLogger.e("CameraScreen", "Frame analysis error", e)
-                            } finally {
-                                imageProxy.close()
-                            }
-                        }
-
                         try {
+                            val cameraProvider = cameraProviderFuture.get()
+                            val preview = androidx.camera.core.Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
+                            val imageAnalysis = ImageAnalysis.Builder()
+                                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                                .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+                                .build()
+
+                            imageAnalysis.setAnalyzer(executor) { imageProxy ->
+                                try {
+                                    val bitmap = imageProxy.toBitmap()
+                                    val timestampMs = imageProxy.imageInfo.timestamp / 1_000_000
+                                    val rotationDegrees = imageProxy.imageInfo.rotationDegrees
+                                    viewModel.lastRotation = rotationDegrees
+                                    val result = classifier.processFrame(bitmap, timestampMs, rotationDegrees)
+                                    
+                                    (context as? Activity)?.runOnUiThread { 
+                                        extractionResult = result
+                                        viewModel.onGestureDetected(result.gesture)
+                                        
+                                        val handCount = result.handResult?.landmarks()?.size ?: 0
+                                        val poseCount = result.poseResult?.landmarks()?.size ?: 0
+                                        if (handCount > 0 || poseCount > 0) {
+                                            fileLogger.d("CameraScreen", "ExtractionResult updated: Hands=$handCount, Pose=$poseCount, Gesture=${result.gesture}, TS=$timestampMs, Rot=$rotationDegrees")
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("CameraScreen", "Analysis error", e)
+                                } finally {
+                                    imageProxy.close()
+                                }
+                            }
+
                             cameraProvider.unbindAll()
-                            val cameraSelector = CameraSelector.Builder().requireLensFacing(currentLensFacing).build()
+                            val cameraSelector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
                             cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, imageAnalysis)
-                            fileLogger.i("CameraScreen", "Camera bound successfully: LensFacing=$currentLensFacing")
+                            Log.i("CameraScreen", "Camera bound successfully: LensFacing=$lensFacing")
+                            fileLogger.i("CameraScreen", "Camera bound successfully: LensFacing=$lensFacing")
                         } catch (e: Exception) { 
-                            Log.e("CameraScreen", "Binding failed for LensFacing=$currentLensFacing", e)
-                            fileLogger.e("CameraScreen", "Binding failed for LensFacing=$currentLensFacing", e)
+                            Log.e("CameraScreen", "Binding failed for LensFacing=$lensFacing", e)
+                            fileLogger.e("CameraScreen", "Binding failed for LensFacing=$lensFacing", e)
                         }
                     }, ContextCompat.getMainExecutor(context))
                 }
             )
+
+            // Speech HUD - Positioned lower to avoid overlapping with status indicators
+            if (currentSpeechText.isNotEmpty()) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.7f)),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 70.dp, start = 16.dp, end = 16.dp, bottom = 16.dp)
+                        .fillMaxWidth(0.9f)
+                        .border(1.dp, Color.Cyan, RoundedCornerShape(12.dp)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text("SPEECH_TO_TEXT", color = Color.Cyan, style = MaterialTheme.typography.labelSmall)
+                        Text(
+                            text = currentSpeechText,
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium)
+                        )
+                    }
+                }
+            }
 
             Canvas(modifier = Modifier.fillMaxSize()) {
                 extractionResult?.let { res ->
@@ -183,22 +240,6 @@ fun CameraScreen(
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f))))
                     .padding(24.dp)
             ) {
-                // Speech Input HUD
-                val spokenText by viewModel.spokenText.collectAsState()
-                if (spokenText.isNotEmpty()) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color.Blue.copy(alpha = 0.4f)),
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).border(1.dp, Color.Blue.copy(alpha = 0.6f), RoundedCornerShape(12.dp)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(modifier = Modifier.size(8.dp).clip(RoundedCornerShape(4.dp)).background(Color.Red))
-                            Spacer(Modifier.width(8.dp))
-                            Text("VOICE_INPUT: \"$spokenText\"", color = Color.White, style = MaterialTheme.typography.labelMedium)
-                        }
-                    }
-                }
-
                 // Warning if tasks are missing
                 if (extractionResult?.gesture?.contains("Error") == true) {
                     Card(
@@ -232,14 +273,28 @@ fun CameraScreen(
                 }
             }
             
-            Box(modifier = Modifier.padding(16.dp).align(Alignment.TopEnd)) {
-                Column(horizontalAlignment = Alignment.End) {
-                    Text("VISION_STREAM: ACTIVE", color = Color.Cyan, style = MaterialTheme.typography.labelSmall)
-                    if (extractionResult?.isTalking == true) {
-                        Text("SPEECH_SYNC: DETECTED", color = Color.Red, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                    }
+            // Status Indicators at the very top edge
+            Box(modifier = Modifier.padding(8.dp).fillMaxWidth()) {
+                // Vision Stream Active Label
+                Text(
+                    text = "VISION_STREAM: ACTIVE", 
+                    color = Color.Cyan, 
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.align(Alignment.TopEnd)
+                )
+                
+                // Speech Sync Indicator
+                if (extractionResult?.isTalking == true) {
+                    Text(
+                        text = "SPEECH_SYNC: DETECTED", 
+                        color = Color.Red, 
+                        style = MaterialTheme.typography.labelSmall, 
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.align(Alignment.TopEnd).padding(top = 14.dp)
+                    )
                 }
             }
+
         }
     }
 }

@@ -14,7 +14,7 @@ import com.google.mediapipe.tasks.vision.handlandmarker.HandLandmarkerResult
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
 import com.example.signex.utils.FileLogger
-import org.tensorf88888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888898low.lite.Interpreter
+import org.tensorflow.lite.Interpreter
 import java.io.BufferedReader
 import java.io.FileInputStream
 import java.io.InputStreamReader

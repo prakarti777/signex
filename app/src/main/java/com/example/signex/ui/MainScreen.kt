@@ -30,7 +30,7 @@ fun MainScreen(
             TopAppBar(
                 title = { 
                     Text(
-                        "ANTIGRAVITY", 
+                        "SIGNEX", 
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontWeight = FontWeight.Black, 
                             letterSpacing = 4.sp,
